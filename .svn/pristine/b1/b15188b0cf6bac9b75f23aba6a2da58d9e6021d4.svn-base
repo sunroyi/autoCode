@@ -1,0 +1,35 @@
+package com.inesa.consumerclient.code.entity;
+
+public class Code {
+
+	private String tableName;
+	private String colName;
+	private String colType;
+	private String colLength;
+	
+	public String getTableName() {
+		return tableName;
+	}
+	public void setTableName(String tableName) {
+		this.tableName = tableName;
+	}
+	public String getColName() {
+		return colName;
+	}
+	public void setColName(String colName) {
+		this.colName = colName;
+	}
+	public String getColType() {
+		return colType;
+	}
+	public void setColType(String colType) {
+		this.colType = colType;
+	}
+	public String getColLength() {
+		return colLength;
+	}
+	public void setColLength(String colLength) {
+		this.colLength = colLength;
+	}
+
+}

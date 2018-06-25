@@ -1,0 +1,17 @@
+package com.inesa.consumerclient.code.sql;
+
+import com.inesa.consumerclient.code.entity.Code;
+
+public class CodeSql {
+	
+	public String findList(Code code) {
+		StringBuffer sb = new StringBuffer();
+		sb.append(" select a.name tableName, b.name colName, c.name colType ,c.length colLength ");
+		sb.append(" from sysobjects a inner join syscolumns b ");
+		sb.append(" on a.id=b.id and a.xtype='U' ");
+		sb.append(" inner join systypes c ");
+		sb.append(" on b.xtype=c.xusertype ");
+		sb.append(" where a.name=#{tableName} ");
+		return sb.toString();
+	}
+}

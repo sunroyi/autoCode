@@ -1,0 +1,54 @@
+/**
+ * Copyright &copy; 2012-2014 <a href="https://github.com/thinkgem/jeesite">JeeSite</a> All rights reserved.
+ */
+package com.inesa.consumerclient.common.service;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.springframework.transaction.annotation.Transactional;
+
+import com.inesa.consumerclient.common.entity.BaseEntity;
+import com.inesa.consumerclient.common.entity.RestfulResult;
+
+
+/**
+ * Service基类
+ * @author ThinkGem
+ * @version 2014-05-16
+ */
+@Transactional(readOnly = true)
+public abstract class CrudService<T extends BaseEntity> {
+	
+	/**
+	 * 查询分页数据
+	 * @param page 分页对象
+	 * @param entity
+	 * @return
+	 */	
+	public RestfulResult findPage(T t, 
+			List<T> list, 
+			RestfulResult restfulResult){
+
+		List<T> pageList = new ArrayList<T>();
+		
+		int pageNo = Integer.parseInt(t.getPageNo());			
+		int pageSize = Integer.parseInt(t.getPageSize());
+
+		if (pageNo == 0 && pageSize == 0){
+			pageList = list;
+			restfulResult.setCntPage(1);
+		}else{
+			for (int i = (pageNo - 1) * pageSize; i < list.size()
+					&& i < pageNo * pageSize; i++) {
+				pageList.add(list.get(i));
+			}
+			restfulResult.setCntPage((int)Math.ceil(list.size()/Integer.parseInt(t.getPageSize())));
+		}
+		
+		restfulResult.setData(pageList);
+		restfulResult.setCntData(list.size());
+		
+		return restfulResult;	
+	}
+}

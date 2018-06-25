@@ -1,0 +1,777 @@
+/**
+ * Copyright &copy; 2012-2016 <a href="https://github.com/thinkgem/jeesite">JeeSite</a> All rights reserved.
+ */
+package com.inesa.consumerclient.code.controller;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.inesa.consumerclient.code.entity.Code;
+import com.inesa.consumerclient.code.service.CodeService;
+import com.inesa.consumerclient.common.entity.RestfulResult;
+
+/**
+ * 自动代码生成Controller
+ * 
+ * @author sun
+ * @version 2018-06-01
+ */
+@RestController
+@RequestMapping(value = "code")
+public class CodeController {
+
+	@Autowired
+	private CodeService codeService;
+
+    private static Pattern linePattern = Pattern.compile("_(\\w)");  
+    private static Pattern humpPattern = Pattern.compile("[A-Z]");  
+
+	@GetMapping("/autoCode")
+	public Object findList(@RequestParam(value="tableName") String tableName) {
+		RestfulResult restfulResult = new RestfulResult();
+		
+		try{
+			Code code = new Code();
+			code.setTableName(tableName);
+			
+			List<Code> defineList = codeService.findList(code);
+			
+			// 创建Controller
+			createController(tableName, defineList);
+			
+			// 创建Dao
+			createDao(tableName, defineList);
+			
+			// 创建Entity
+			createEntity(tableName, defineList);
+			
+			// 创建Service
+			createService(tableName, defineList);
+			
+			// 创建Sql
+			createSql(tableName, defineList);
+			
+			restfulResult.setData(defineList);
+			
+			return restfulResult;
+		}catch(Exception e){
+			restfulResult.setMessage(e.getMessage());
+			
+			return e.getMessage();
+		}
+	}
+	
+	 /**
+     * 创建文件
+     * @param fileName  文件名称
+     * @param filecontent   文件内容
+     * @return  是否创建成功，成功则返回true
+     */
+    public static boolean createFile(String fileName,String filecontent){
+        Boolean bool = false;
+        File file = new File(fileName);
+        try {
+        	File fileParent = file.getParentFile();  
+        	if(!fileParent.exists()){  
+        	    fileParent.mkdirs();  
+        	}
+            if(!file.exists()){
+                file.createNewFile();
+                bool = true;
+                System.out.println("success create file,the file is "+fileName);
+                //创建文件成功后，写入内容到文件里
+                writeFileContent(fileName, filecontent);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        
+        return bool;
+    }
+    
+    /**
+     * 向文件中写入内容
+     * @param filepath 文件路径与名称
+     * @param newstr  写入的内容
+     * @return
+     * @throws IOException
+     */
+    public static boolean writeFileContent(String filepath,String newstr) throws IOException{
+        Boolean bool = false;
+        String filein = newstr+"\r\n";//新写入的行，换行
+        String temp  = "";
+        
+        FileInputStream fis = null;
+        InputStreamReader isr = null;
+        BufferedReader br = null;
+        FileOutputStream fos  = null;
+        PrintWriter pw = null;
+        try {
+            File file = new File(filepath);//文件路径(包括文件名称)
+            //将文件读入输入流
+            fis = new FileInputStream(file);
+            isr = new InputStreamReader(fis);
+            br = new BufferedReader(isr);
+            StringBuffer buffer = new StringBuffer();
+            
+            //文件原有内容
+            for(int i=0;(temp =br.readLine())!=null;i++){
+                buffer.append(temp);
+                // 行与行之间的分隔符 相当于“\n”
+                buffer = buffer.append(System.getProperty("line.separator"));
+            }
+            buffer.append(filein);
+            
+            fos = new FileOutputStream(file);
+            pw = new PrintWriter(fos);
+            pw.write(buffer.toString().toCharArray());
+            pw.flush();
+            bool = true;
+        } catch (Exception e) {
+            // TODO: handle exception
+            e.printStackTrace();
+        }finally {
+            //不要忘记关闭
+            if (pw != null) {
+                pw.close();
+            }
+            if (fos != null) {
+                fos.close();
+            }
+            if (br != null) {
+                br.close();
+            }
+            if (isr != null) {
+                isr.close();
+            }
+            if (fis != null) {
+                fis.close();
+            }
+        }
+        return bool;
+    }
+    
+    public static String lineToHump(String str){  
+        str = str.toLowerCase();  
+        Matcher matcher = linePattern.matcher(str);  
+        StringBuffer sb = new StringBuffer();  
+        while(matcher.find()){  
+            matcher.appendReplacement(sb, matcher.group(1).toUpperCase());  
+        }  
+        matcher.appendTail(sb);  
+        return sb.toString();  
+    }  
+    
+    public static String humpToLine2(String str){  
+        Matcher matcher = humpPattern.matcher(str);  
+        StringBuffer sb = new StringBuffer();  
+        while(matcher.find()){  
+            matcher.appendReplacement(sb, "_"+matcher.group(0).toLowerCase());  
+        }  
+        matcher.appendTail(sb);  
+        return sb.toString();  
+    }  
+    
+    private void createController(String tableName, List<Code> codeList){
+    	StringBuilder sb = new StringBuilder();
+    	
+    	String className = tableName;
+    	if (tableName.indexOf("_") > 0)
+    		className = tableName.substring(0, tableName.indexOf("_"));
+    	String humpName = lineToHump(tableName);
+    	String HumpName = humpName.substring(0, 1).toUpperCase() + humpName.substring(1);
+    	
+    	//截取当前系统时间 
+    	Date currentTime = new Date(); 
+    	//改变输出格式（自己想要的格式） 
+    	SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd"); 
+    	//得到字符串时间 
+    	String now = formatter.format(currentTime); 
+    	
+    	sb.append("package com.inesa.consumerclient." + className + ".controller;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("import java.util.ArrayList;").append("\r\n");
+    	sb.append("import java.util.List;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("import javax.servlet.http.HttpServletRequest;").append("\r\n");
+    	sb.append("import javax.servlet.http.HttpServletResponse;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("import org.springframework.beans.factory.annotation.Autowired;").append("\r\n");
+    	sb.append("import org.springframework.web.bind.annotation.RequestBody;").append("\r\n");
+    	sb.append("import org.springframework.web.bind.annotation.RequestMapping;").append("\r\n");
+    	sb.append("import org.springframework.web.bind.annotation.RequestParam;").append("\r\n");
+    	sb.append("import org.springframework.web.bind.annotation.RestController;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("import com.inesa.consumerclient.common.entity.RestfulResult;").append("\r\n");
+    	sb.append("import com.inesa.consumerclient.common.utils.CommMessage;").append("\r\n");
+    	sb.append("import com.inesa.consumerclient.common.utils.CommUtils;").append("\r\n");
+    	sb.append("import com.inesa.consumerclient.common.utils.Constants;").append("\r\n");
+    	sb.append("import com.inesa.consumerclient.common.utils.StringUtils;").append("\r\n");
+    	sb.append("import com.inesa.consumerclient." + className + ".entity." + HumpName + ";").append("\r\n");
+    	sb.append("import com.inesa.consumerclient." + className + ".service." + HumpName + "Service;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("/**").append("\r\n");
+    	sb.append(" * " + HumpName + "Controller").append("\r\n");
+    	sb.append(" *").append("\r\n");
+    	sb.append(" * @author Sun").append("\r\n");
+    	sb.append(" * @version " + now).append("\r\n");
+    	sb.append(" */").append("\r\n");
+    	sb.append("@RestController").append("\r\n");
+    	sb.append("@RequestMapping(value = \"" + humpName + "\")").append("\r\n");
+    	sb.append("public class " + HumpName + "Controller {").append("\r\n");
+		sb.append("	").append("\r\n");
+		sb.append("	@Autowired").append("\r\n");
+		sb.append("	private " + HumpName + "Service " + humpName + "Service;").append("\r\n");
+		sb.append("	").append("\r\n");
+		sb.append("	/**").append("\r\n");
+		sb.append("	 * <p>").append("\r\n");
+		sb.append("	 * 保存信息").append("\r\n");
+		sb.append("	 * </p>").append("\r\n");
+		sb.append("	 * ").append("\r\n");
+		sb.append("	 * @param " + HumpName).append("\r\n");
+		sb.append("	 * @return RestfulResult response").append("\r\n");
+		sb.append("	 */").append("\r\n");
+		sb.append("	@RequestMapping(value = \"save\")").append("\r\n");
+		sb.append("	public void save(HttpServletRequest request, HttpServletResponse response,").append("\r\n");
+		sb.append("			@RequestBody " + HumpName + " " + humpName + ") {").append("\r\n");
+		sb.append("		 ").append("\r\n");
+		sb.append("		RestfulResult restfulResult = new RestfulResult();").append("\r\n");
+		sb.append("		").append("\r\n");
+		sb.append("		try {").append("\r\n");
+		sb.append("			request.setCharacterEncoding(\"UTF-8\");").append("\r\n");
+		sb.append("			").append("\r\n");
+		sb.append("			if (" + humpName + " == null || StringUtils.isBlank(" + humpName + ".getUserId())) {").append("\r\n");
+		sb.append("				restfulResult.setResult(Constants.RESULT_STATE_ERROR);").append("\r\n");
+		sb.append("				restfulResult.setMessage(\"参数错误\");").append("\r\n");
+		sb.append("				CommUtils.printDataJason(response, restfulResult);").append("\r\n");
+		sb.append("				return;").append("\r\n");
+		sb.append("			}").append("\r\n");
+		sb.append("			").append("\r\n");
+		sb.append("			" + humpName + "Service.save(" + humpName + ");").append("\r\n");
+		sb.append("			").append("\r\n");
+		sb.append("			CommUtils.printDataJason(response, restfulResult);").append("\r\n");
+		sb.append("			").append("\r\n");
+		sb.append("		} catch (Exception ex) {").append("\r\n");
+		sb.append("			restfulResult.setResult(Constants.RESULT_STATE_ERROR);").append("\r\n");
+		sb.append("			restfulResult.setMessage(\"系统错误\");").append("\r\n");
+		sb.append("			CommUtils.printDataJason(response, restfulResult);").append("\r\n");
+		sb.append("		}").append("\r\n");
+		sb.append("	}").append("\r\n");
+		sb.append("	 ").append("\r\n");
+		sb.append("	/**").append("\r\n");
+		sb.append("	 * <p>").append("\r\n");
+		sb.append("	 * 刪除信息").append("\r\n");
+		sb.append("	 * </p>").append("\r\n");
+		sb.append("	 * ").append("\r\n");
+		sb.append("	 * @param id").append("\r\n");
+		sb.append("	 * @return RestfulResult response").append("\r\n");
+		sb.append("	 */").append("\r\n");
+		sb.append("	@RequestMapping(value = \"delete\")").append("\r\n");
+		sb.append("	public void delete(HttpServletRequest request, HttpServletResponse response,").append("\r\n");
+		sb.append("			@RequestBody " + HumpName + " " + humpName + ") {").append("\r\n");
+		sb.append("		").append("\r\n");
+		sb.append("		RestfulResult restfulResult = new RestfulResult();").append("\r\n");
+		sb.append("		").append("\r\n");
+		sb.append("		try {").append("\r\n");
+		sb.append("			if (" + humpName + " == null").append("\r\n");
+		sb.append("					|| StringUtils.isEmpty(" + humpName + ".getId())").append("\r\n");
+		sb.append("					|| StringUtils.isEmpty(" + humpName + ".getUserId())) {").append("\r\n");
+		sb.append("				restfulResult.setResult(Constants.RESULT_STATE_ERROR);").append("\r\n");;
+		sb.append("				restfulResult.setMessage(\"参数错误\");").append("\r\n");
+		sb.append("				CommUtils.printDataJason(response, restfulResult);").append("\r\n");
+		sb.append("				return;").append("\r\n");
+		sb.append("			}").append("\r\n");
+		sb.append("			").append("\r\n");
+		sb.append("			" + humpName + "Service.delete(" + humpName + ");").append("\r\n");
+		sb.append("			").append("\r\n");
+		sb.append("			CommUtils.printDataJason(response, restfulResult);").append("\r\n");
+		sb.append("			").append("\r\n");
+		sb.append("		} catch (Exception ex) {").append("\r\n");
+		sb.append("			restfulResult.setResult(Constants.RESULT_STATE_ERROR);").append("\r\n");
+		sb.append("			restfulResult.setMessage(\"系统错误\");").append("\r\n");
+		sb.append("			CommUtils.printDataJason(response, restfulResult);").append("\r\n");
+		sb.append("		}").append("\r\n");
+		sb.append("	}").append("\r\n");
+		sb.append("	").append("\r\n");
+		sb.append("	/**").append("\r\n");
+		sb.append("	 * <p>").append("\r\n");
+		sb.append("	 * 获取信息").append("\r\n");
+		sb.append("	 * </p>").append("\r\n");
+		sb.append("	 * ").append("\r\n");
+		sb.append("	 * ").append("\r\n");
+		sb.append("	 * @return RestfulResult response").append("\r\n");
+		sb.append("	 */").append("\r\n");
+		sb.append("	@RequestMapping(value = \"search\")").append("\r\n");
+		sb.append("	public void search(HttpServletRequest request, HttpServletResponse response,").append("\r\n");
+		sb.append("			@RequestBody " + HumpName + " " + humpName + ") {").append("\r\n");
+		sb.append("		").append("\r\n");
+		sb.append("		RestfulResult restfulResult = new RestfulResult();").append("\r\n");
+		sb.append("		").append("\r\n");
+		sb.append("		try {").append("\r\n");
+		sb.append("			List<" + HumpName + "> " + humpName + "List = " + humpName + "Service.findList(" + humpName + ");").append("\r\n");
+		sb.append("").append("\r\n");
+		sb.append("			List<" + HumpName + "> pageList = new ArrayList<" + HumpName + ">();").append("\r\n");
+		sb.append("	").append("\r\n");
+		sb.append("			int pageNo = Integer.parseInt(" + humpName + ".getPageNo());").append("\r\n");			
+		sb.append("			int pageSize = Integer.parseInt(" + humpName + ".getPageSize());").append("\r\n");
+		sb.append("	").append("\r\n");
+		sb.append("			if (pageNo == 0 && pageSize == 0){").append("\r\n");
+		sb.append("				pageList = " + humpName + "List;").append("\r\n");
+		sb.append("				restfulResult.setCntPage(1);").append("\r\n");
+		sb.append("			}else{").append("\r\n");
+		sb.append("				for (int i = (pageNo - 1) * pageSize; i < " + humpName + "List.size()").append("\r\n");
+		sb.append("					&& i < pageNo * pageSize; i++) {").append("\r\n");
+		sb.append("					pageList.add(" + humpName + "List.get(i));").append("\r\n");
+		sb.append("				}").append("\r\n");
+		sb.append("				restfulResult.setCntPage((int)Math.ceil(" + humpName + "List.size()/Integer.parseInt(" + humpName + ".getPageSize())));").append("\r\n");
+		sb.append("			}").append("\r\n");
+		sb.append("	").append("\r\n");
+		sb.append("			restfulResult.setData(pageList);").append("\r\n");
+		sb.append("			restfulResult.setCntData(" + humpName + "List.size());").append("\r\n");
+		sb.append("	").append("\r\n");
+		sb.append("			CommUtils.printDataJason(response, restfulResult);").append("\r\n");
+		sb.append("	").append("\r\n");
+		sb.append("		} catch (Exception ex) {").append("\r\n");
+		sb.append("			restfulResult.setResult(Constants.RESULT_STATE_ERROR);").append("\r\n");
+		sb.append("			restfulResult.setMessage(\"系统错误\");").append("\r\n");
+		sb.append("			CommUtils.printDataJason(response, restfulResult);").append("\r\n");
+		sb.append("		}").append("\r\n");
+		sb.append("	}").append("\r\n");
+		sb.append("	").append("\r\n");
+		sb.append("	/**").append("\r\n");
+		sb.append("	 * <p>").append("\r\n");
+		sb.append("	 * 获取单个信息").append("\r\n");
+		sb.append("	 * </p>").append("\r\n");
+		sb.append("	 * ").append("\r\n");
+		sb.append("	 * ").append("\r\n");
+		sb.append("	 * @return RestfulResult response").append("\r\n");
+		sb.append("		 */").append("\r\n");
+		sb.append("	@RequestMapping(value = \"get\")").append("\r\n");
+		sb.append("	public void get(HttpServletRequest request, HttpServletResponse response,").append("\r\n");
+		sb.append("			@RequestBody " + HumpName + " " + humpName + ") {").append("\r\n");
+		sb.append("		").append("\r\n");
+		sb.append("		RestfulResult restfulResult = new RestfulResult();").append("\r\n");
+		sb.append("		").append("\r\n");
+		sb.append("		try {").append("\r\n");
+		sb.append("			" + humpName + " = " + humpName + "Service.get(" + humpName + ".getId());").append("\r\n");
+		sb.append("			restfulResult.setData(" + humpName + ");").append("\r\n");
+		sb.append("			").append("\r\n");
+		sb.append("			CommUtils.printDataJason(response, restfulResult);").append("\r\n");
+		sb.append("			").append("\r\n");
+		sb.append("		} catch (Exception ex) {").append("\r\n");
+		sb.append("			restfulResult.setResult(Constants.RESULT_STATE_ERROR);").append("\r\n");
+		sb.append("			restfulResult.setMessage(\"系统错误\");").append("\r\n");
+		sb.append("			CommUtils.printDataJason(response, restfulResult);").append("\r\n");
+		sb.append("		}").append("\r\n");
+		sb.append("	}").append("\r\n");
+		sb.append("	").append("\r\n");
+		sb.append("}").append("\r\n");
+    	
+    	createFile("D:\\src\\main\\java\\com\\inesa\\consumerclient\\" + className + "\\controller\\" + HumpName + "Controller.java",  sb.toString());
+    }
+    
+    private void createDao(String tableName, List<Code> codeList){
+    	StringBuilder sb = new StringBuilder();
+    	
+    	String className = tableName;
+    	if (tableName.indexOf("_") > 0)
+    		className = tableName.substring(0, tableName.indexOf("_"));
+    	String humpName = lineToHump(tableName);
+    	String HumpName = humpName.substring(0, 1).toUpperCase() + humpName.substring(1);
+    	
+    	//截取当前系统时间 
+    	Date currentTime = new Date(); 
+    	//改变输出格式（自己想要的格式） 
+    	SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd"); 
+    	//得到字符串时间 
+    	String now = formatter.format(currentTime); 
+    	
+    	sb.append("package com.inesa.consumerclient." + className + ".dao;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("import java.util.List;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("import org.apache.ibatis.annotations.InsertProvider;").append("\r\n");
+    	sb.append("import org.apache.ibatis.annotations.Mapper;").append("\r\n");
+    	sb.append("import org.apache.ibatis.annotations.SelectProvider;").append("\r\n");
+    	sb.append("import org.apache.ibatis.annotations.UpdateProvider;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("import com.inesa.consumerclient." + className + ".entity." + HumpName + ";").append("\r\n");
+    	sb.append("import com.inesa.consumerclient." + className + ".sql." + HumpName + "Sql;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("/**").append("\r\n");
+    	sb.append(" * DAO接口").append("\r\n");
+    	sb.append(" * ").append("\r\n");
+    	sb.append(" * @author Sun").append("\r\n");
+    	sb.append(" * @version "+ now).append("\r\n");
+    	sb.append(" */").append("\r\n");
+    	sb.append("@Mapper").append("\r\n");
+    	sb.append("public interface " + HumpName + "Dao {").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	@SelectProvider(type = " + HumpName + "Sql.class, method = \"findList\")").append("\r\n");
+    	sb.append("	public List<" + HumpName + "> findList(" + HumpName + " " + humpName + ");").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	@SelectProvider(type = " + HumpName + "Sql.class, method = \"get\")").append("\r\n");
+    	sb.append("	public " + HumpName + " get(" + HumpName + " " + humpName + ");").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	@InsertProvider(type = " + HumpName + "Sql.class, method = \"insert\")").append("\r\n");
+    	sb.append("	public void insert(" + HumpName + " " + humpName + ");").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	@UpdateProvider(type = " + HumpName + "Sql.class, method = \"update\")").append("\r\n");
+    	sb.append("	public void update(" + HumpName + " " + humpName + ");").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	@UpdateProvider(type = " + HumpName + "Sql.class, method = \"delete\")").append("\r\n");
+    	sb.append("	public void delete(" + HumpName + " " + humpName + ");").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("}").append("\r\n");
+    	
+    	createFile("D:\\src\\main\\java\\com\\inesa\\consumerclient\\" + className + "\\dao\\" + HumpName + "Dao.java",  sb.toString());
+    }
+    
+    private void createService(String tableName, List<Code> codeList){
+    	StringBuilder sb = new StringBuilder();
+    	
+    	String className = tableName;
+    	if (tableName.indexOf("_") > 0)
+    		className = tableName.substring(0, tableName.indexOf("_"));
+    	String humpName = lineToHump(tableName);
+    	String HumpName = humpName.substring(0, 1).toUpperCase() + humpName.substring(1);
+    	
+    	//截取当前系统时间 
+    	Date currentTime = new Date(); 
+    	//改变输出格式（自己想要的格式） 
+    	SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd"); 
+    	//得到字符串时间 
+    	String now = formatter.format(currentTime); 
+
+    	sb.append("package com.inesa.consumerclient." + className + ".service;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("import java.util.List;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("import org.springframework.beans.factory.annotation.Autowired;").append("\r\n");
+    	sb.append("import org.springframework.stereotype.Service;").append("\r\n");
+    	sb.append("import org.springframework.transaction.annotation.Transactional;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("import com.inesa.consumerclient.common.utils.IdGen;").append("\r\n");
+    	sb.append("import com.inesa.consumerclient.common.utils.StringUtils;").append("\r\n");
+    	sb.append("import com.inesa.consumerclient." + className + ".dao." + HumpName + "Dao;").append("\r\n");
+    	sb.append("import com.inesa.consumerclient." + className + ".entity." + HumpName + ";").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("/**").append("\r\n");
+    	sb.append(" * Service").append("\r\n");
+    	sb.append(" * ").append("\r\n");
+    	sb.append(" * @author Sun").append("\r\n");
+    	sb.append(" * @version " + now).append("\r\n");
+    	sb.append(" */").append("\r\n");
+    	sb.append("@Service").append("\r\n");
+    	sb.append("@Transactional(readOnly = true)").append("\r\n");
+    	sb.append("public class " + HumpName + "Service {").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	@Autowired").append("\r\n");
+    	sb.append("	private " + HumpName + "Dao " + humpName + "Dao;").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	/**").append("\r\n");
+    	sb.append("	 * <p>").append("\r\n");
+    	sb.append("	 * 编辑信息").append("\r\n");
+    	sb.append("	 * </p>").append("\r\n");
+    	sb.append("	 * ").append("\r\n");
+    	sb.append("	 * @param " + humpName + " 信息").append("\r\n");
+    	sb.append("	 * ").append("\r\n");
+    	sb.append("	 * @return RestfulResult response").append("\r\n");
+    	sb.append("	 */").append("\r\n");
+    	sb.append("	@Transactional(readOnly = false)").append("\r\n");
+    	sb.append("	public void save(" + HumpName + " " + humpName + ") {").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	sb.append("		" + humpName + ".setUpdateBy(" + humpName + ".getUserId());").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	sb.append("		if (StringUtils.isBlank(" + humpName + ".getId())) {").append("\r\n");
+    	sb.append("			" + humpName + ".setId(IdGen.uuid());").append("\r\n");
+    	sb.append("			" + humpName + ".setCreateBy(" + humpName + ".getUserId());").append("\r\n");
+    	sb.append("			" + humpName + "Dao.insert(" + humpName + ");").append("\r\n");
+    	sb.append("		} else {").append("\r\n");
+    	sb.append("			" + humpName + "Dao.update(" + humpName + ");").append("\r\n");
+    	sb.append("		}").append("\r\n");
+    	sb.append("	}").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	/**").append("\r\n");
+    	sb.append("	 * <p>").append("\r\n");
+    	sb.append("	 * 删除信息").append("\r\n");
+    	sb.append("	 * </p>").append("\r\n");
+    	sb.append("	 * ").append("\r\n");
+    	sb.append("	 * @para " + humpName + " 信息").append("\r\n");
+    	sb.append("	 * ").append("\r\n");
+    	sb.append("	 * @return RestfulResult response").append("\r\n");
+    	sb.append("	 */").append("\r\n");
+    	sb.append("	@Transactional(readOnly = false)").append("\r\n");
+    	sb.append("	public void delete(" + HumpName + " " + humpName + ") {").append("\r\n");
+    	sb.append("		" + humpName + ".setUpdateBy(" + humpName + ".getUserId());").append("\r\n");
+    	sb.append("		" + humpName + "Dao.delete(" + humpName + ");").append("\r\n");
+    	sb.append("	}").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	/**").append("\r\n");
+    	sb.append("	 * <p>").append("\r\n");
+    	sb.append("	 * 获取信息").append("\r\n");
+    	sb.append("	 * </p>").append("\r\n");
+    	sb.append("	 * 	").append("\r\n");
+    	sb.append("	 * ").append("\r\n");
+    	sb.append("	 * @return RestfulResult response").append("\r\n");
+    	sb.append("	 */").append("\r\n");
+    	sb.append("	public " + HumpName + " get(String id) {").append("\r\n");
+    	sb.append("		" + HumpName + " " + humpName + " = new " + HumpName + "();").append("\r\n");
+    	sb.append("		" + humpName + ".setId(id);").append("\r\n");
+    	sb.append("		return " + humpName + "Dao.get(" + humpName + ");").append("\r\n");
+    	sb.append("	}").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	/**").append("\r\n");
+    	sb.append("	 * <p>").append("\r\n");
+    	sb.append("	 * 获取信息").append("\r\n");
+    	sb.append("	 * </p>").append("\r\n");
+    	sb.append("	 * 	").append("\r\n");
+    	sb.append("	 * ").append("\r\n");
+    	sb.append("	 * @return RestfulResult response").append("\r\n");
+    	sb.append("	 */").append("\r\n");
+    	sb.append("	public List<" + HumpName + "> findList(" + HumpName + " " + humpName + ") {").append("\r\n");
+    	sb.append("		return " + humpName + "Dao.findList(" + humpName + ");").append("\r\n");
+    	sb.append("	}").append("\r\n");
+    	sb.append("}").append("\r\n");
+    	
+    	createFile("D:\\src\\main\\java\\com\\inesa\\consumerclient\\" + className + "\\service\\" + HumpName + "Service.java",  sb.toString());
+    }
+    
+    private void createEntity(String tableName, List<Code> codeList){
+    	StringBuilder sb = new StringBuilder();
+    	StringBuilder sb1 = new StringBuilder();
+    	StringBuilder sb2 = new StringBuilder();
+    	
+    	String className = tableName;
+    	if (tableName.indexOf("_") > 0)
+    		className = tableName.substring(0, tableName.indexOf("_"));
+    	String humpName = lineToHump(tableName);
+    	String HumpName = humpName.substring(0, 1).toUpperCase() + humpName.substring(1);
+    	
+    	//截取当前系统时间 
+    	Date currentTime = new Date(); 
+    	//改变输出格式（自己想要的格式） 
+    	SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd"); 
+    	//得到字符串时间 
+    	String now = formatter.format(currentTime); 
+
+    	sb.append("package com.inesa.consumerclient." + className + ".entity;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("import java.util.Date;").append("\r\n");
+    	sb.append("import com.inesa.consumerclient.common.entity.BaseEntity;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("/**").append("\r\n");
+    	sb.append(" * Entity").append("\r\n");
+    	sb.append(" * ").append("\r\n");
+    	sb.append(" * @author Sun").append("\r\n");
+    	sb.append(" * @version " + now).append("\r\n");
+    	sb.append(" */").append("\r\n");
+    	sb.append("public class " + HumpName + " extends BaseEntity {").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	private static final long serialVersionUID = 1L;").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	
+    	for(int i=0;i<codeList.size();i++){
+    		String colType = getColType(codeList.get(i).getColType());
+        	String colhumpName = lineToHump(codeList.get(i).getColName());
+        	String colHumpName = colhumpName.substring(0, 1).toUpperCase() + colhumpName.substring(1);
+        	
+	    	sb1.append("	private " + colType + " " + colhumpName + ";").append("\r\n");
+	    	sb1.append("").append("\r\n");
+	
+	    	sb2.append("	public " + colType + " get" + colHumpName + "() {").append("\r\n");
+	    	sb2.append("		return " + colhumpName + ";").append("\r\n");
+	    	sb2.append("	}").append("\r\n");
+	    	sb2.append("").append("\r\n");
+	    	sb2.append("	public void set" + colHumpName + "(" + colType + " " + colhumpName + ") {").append("\r\n");
+	    	sb2.append("		this." + colhumpName + " = " + colhumpName + ";").append("\r\n");
+	    	sb2.append("	}").append("\r\n");
+    	}
+    	
+    	sb.append(sb1.toString());
+    	sb.append(sb2.toString());
+		sb.append("}").append("\r\n");
+    	createFile("D:\\src\\main\\java\\com\\inesa\\consumerclient\\" + className + "\\entity\\" + HumpName + ".java",  sb.toString());
+    }
+    
+    private void createSql(String tableName, List<Code> codeList){
+    	StringBuilder sb = new StringBuilder();
+    	
+    	String className = tableName;
+    	if (tableName.indexOf("_") > 0)
+    		className = tableName.substring(0, tableName.indexOf("_"));
+    	String humpName = lineToHump(tableName);
+    	String HumpName = humpName.substring(0, 1).toUpperCase() + humpName.substring(1);
+    	
+    	//截取当前系统时间 
+    	Date currentTime = new Date(); 
+    	//改变输出格式（自己想要的格式） 
+    	SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd"); 
+    	//得到字符串时间 
+    	String now = formatter.format(currentTime); 
+    	
+    	sb.append("package com.inesa.consumerclient." + className + ".sql;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("import org.apache.ibatis.jdbc.SQL;").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("import com.inesa.consumerclient.common.utils.PropertyUtil;").append("\r\n");
+    	sb.append("import com.inesa.consumerclient.common.utils.StringUtils;").append("\r\n");
+    	sb.append("import com.inesa.consumerclient." + className + ".entity." + HumpName + ";").append("\r\n");
+    	sb.append("").append("\r\n");
+    	sb.append("public class " + HumpName + "Sql {").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	private String dbName = PropertyUtil.getProperty(\"jdbc.type\");").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	public String insert(" + HumpName + " " + humpName + ") {").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	sb.append("		SQL sql = new SQL();").append("\r\n");
+    	sb.append("		sql.INSERT_INTO(\"" + tableName + "\");").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	
+    	for(int i=0;i<codeList.size();i++){
+    		if (codeList.get(i).getColName().equals("create_date") || codeList.get(i).getColName().equals("update_date"))
+    			sb.append("		sql.VALUES(\"" + codeList.get(i).getColName() + "\", \"GETDATE()\");").append("\r\n");
+    		else
+    			sb.append("		sql.VALUES(\"" + codeList.get(i).getColName() + "\", \"#{" + lineToHump(codeList.get(i).getColName()) + "}\");").append("\r\n");
+    	}
+    	
+    	sb.append("		").append("\r\n");
+    	sb.append("		return sql.toString();").append("\r\n");
+    	sb.append("	}").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	public String update(" + HumpName + " " + humpName + ") {").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	sb.append("		SQL sql = new SQL();").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	sb.append("		sql.UPDATE(\"" + tableName + "\");").append("\r\n");
+    	sb.append("		").append("\r\n");
+
+    	for(int i=0;i<codeList.size();i++){
+    		if (getColType(codeList.get(i).getColType()).equals("String")){
+    			sb.append("		if (!StringUtils.isEmpty(" + humpName + ".get" + lineToHump(codeList.get(i).getColName()).substring(0, 1).toUpperCase() + lineToHump(codeList.get(i).getColName()).substring(1) + "())){").append("\r\n");
+	    		sb.append("			sql.SET(\"" + codeList.get(i).getColName() + "=#{" + lineToHump(codeList.get(i).getColName()) + "}\");").append("\r\n");
+	    		sb.append("		}").append("\r\n");
+    		}
+    		else if (getColType(codeList.get(i).getColType()).equals("Date")){
+    			if (codeList.get(i).getColName().equals("create_date") || codeList.get(i).getColName().equals("create_by")){
+    			}
+    			else if (codeList.get(i).getColName().equals("update_date")){
+    				sb.append("		sql.SET(\"" + codeList.get(i).getColName() + "=GETDATE()\");").append("\r\n");
+    			}
+    			else{    			
+	    			sb.append("		if (" + humpName + ".get" + lineToHump(codeList.get(i).getColName()).substring(0, 1).toUpperCase() + lineToHump(codeList.get(i).getColName()).substring(1) + "() != null){").append("\r\n");
+		    		sb.append("			sql.SET(\"" + codeList.get(i).getColName() + "=#{" + lineToHump(codeList.get(i).getColName()) + "}\");").append("\r\n");
+		    		sb.append("		}").append("\r\n");
+    			}
+    		}else{
+    			sb.append("		sql.SET(\"" + codeList.get(i).getColName() + "=#{" + lineToHump(codeList.get(i).getColName()) + "}\");").append("\r\n");
+    		}
+    	}
+    	
+    	sb.append("		").append("\r\n");
+    	sb.append("		sql.WHERE(\"id=#{id}\");").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	sb.append("		return sql.toString();").append("\r\n");
+    	sb.append("	}").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	public String get(" + HumpName + " " + humpName + ") {").append("\r\n");
+    	sb.append("		StringBuffer sb = new StringBuffer();").append("\r\n");
+    	sb.append("		sb.append(\" SELECT  \");").append("\r\n");
+
+    	for(int i=0;i<codeList.size();i++){
+    		if (i == codeList.size()-1)
+    			sb.append("		sb.append(\" 	a." + codeList.get(i).getColName() + " AS " + lineToHump(codeList.get(i).getColName()) + " \");").append("\r\n");
+    		else
+    			sb.append("		sb.append(\" 	a." + codeList.get(i).getColName() + " AS " + lineToHump(codeList.get(i).getColName()) + ", \");").append("\r\n");
+    	}
+    	
+    	sb.append("		sb.append(\" FROM " + tableName + " a \");").append("\r\n");
+    	sb.append("		sb.append(\" WHERE a.del_flag = '0' \");").append("\r\n");
+    	sb.append("		sb.append(\" 	AND id = #{id} \");").append("\r\n");
+    	sb.append("		return sb.toString();").append("\r\n");
+    	sb.append("	}").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	public String findList(" + HumpName + " " + humpName + ") {").append("\r\n");
+    	sb.append("		StringBuffer sb = new StringBuffer();").append("\r\n");
+    	
+
+    	sb.append("		sb.append(\" SELECT  \");").append("\r\n");
+
+    	for(int i=0;i<codeList.size();i++){
+    		if (i == codeList.size()-1)
+    			sb.append("		sb.append(\" 	a." + codeList.get(i).getColName() + " AS " + lineToHump(codeList.get(i).getColName()) + " \");").append("\r\n");
+    		else
+    			sb.append("		sb.append(\" 	a." + codeList.get(i).getColName() + " AS " + lineToHump(codeList.get(i).getColName()) + ", \");").append("\r\n");
+    	}
+    	
+    	sb.append("		sb.append(\" FROM " + tableName + " a \");").append("\r\n");
+    	sb.append("		sb.append(\" WHERE a.del_flag = '0' \");").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	sb.append("		if (!StringUtils.isEmpty(" + humpName + ".getId())) {").append("\r\n");
+    	sb.append("			sb.append(\" AND a.id = #{id} \");").append("\r\n");
+    	sb.append("		}").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	sb.append("		if (!StringUtils.isEmpty(" + humpName + ".getName())) {").append("\r\n");
+    	sb.append("			sb.append(\" AND a.name LIKE \");").append("\r\n");
+    	sb.append("			if (dbName.equals(\"oracle\")) {").append("\r\n");
+    	sb.append("				sb.append(\" '%'||#{name}||'%' \");").append("\r\n");
+    	sb.append("			} else if (dbName.equals(\"mssql\")) {").append("\r\n");
+    	sb.append("				sb.append(\" '%'+#{name}+'%'  \");").append("\r\n");
+    	sb.append("			} else if (dbName.equals(\"mysql\")) {").append("\r\n");
+    	sb.append("				sb.append(\" CONCAT('%',#{name},'%')  \");").append("\r\n");
+    	sb.append("			}").append("\r\n");
+    	sb.append("		}").append("\r\n");
+    	sb.append("		sb.append(\" ORDER BY a.update_date DESC \");").append("\r\n");
+    	sb.append("		return sb.toString();").append("\r\n");
+    	sb.append("	}").append("\r\n");
+    	sb.append("	").append("\r\n");
+    	sb.append("	public String delete(" + HumpName + " " + humpName + ") {").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	sb.append("		SQL sql = new SQL();").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	sb.append("		sql.UPDATE(\"" + tableName + "\");").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	sb.append("		sql.SET(\"del_flag='1'\");").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	sb.append("		sql.WHERE(\"id=#{id}\");").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	sb.append("		return sql.toString();").append("\r\n");
+    	sb.append("		").append("\r\n");
+    	sb.append("	}").append("\r\n");
+    	sb.append("}").append("\r\n");
+    	
+    	createFile("D:\\src\\main\\java\\com\\inesa\\consumerclient\\" + className + "\\sql\\" + HumpName + "Sql.java",  sb.toString());
+    }
+    
+    private String getColType(String dbType){
+    	String colType = "";
+    	    	
+    	if (dbType.equals("int"))
+    		colType = "int";
+    	else if (dbType.equals("decimal"))
+    		colType = "double";
+    	else if (dbType.equals("datetime"))
+    		colType = "Date";
+    	else
+    		colType = "String";
+    	
+    	return colType;
+    }
+}
